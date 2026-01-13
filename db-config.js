@@ -17,7 +17,7 @@ const DB_CONFIG = {
   firebase: {
     // TODO: Replace with your Firebase project credentials
     // Get these from: Firebase Console → Project Settings → Your apps → Web app
-    apiKey: "AIzaSyBJlTjdEsUIWDz2b7VTCX51wnnrVCff9pM",
+    apiKey: "API_KEY",
   authDomain: "asin-extension.firebaseapp.com",
   projectId: "asin-extension",
   storageBucket: "asin-extension.firebasestorage.app",
