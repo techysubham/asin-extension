@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Amazon ASIN Filter</title>
+  <link rel="stylesheet" href="popup.css">
+  <script src="db-config.js"></script>
+  <script src="db-service.js"></script>
+  <script src="firebase-db.js"></script>
+  <script src="mongodb-db.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>Amazon ASIN Exporter</h1>
+    
+    <div class="section">
+      <h3>Filter Criteria</h3>
+      
+      <div class="filter-item">
+        <label>Search Keywords (optional):</label>
+        <input type="text" id="searchKeywords" placeholder="e.g., wireless, leather, waterproof">
+        <small class="hint">Comma-separated keywords. Products must contain at least one.</small>
+      </div>
+      
+      <div class="filter-item">
+        <label>
+          <input type="checkbox" id="brandFilter" checked>
+          Include searched keyword brand
+        </label>
+      </div>
+
+      <div class="filter-item">
+        <label>Exclude Brand:</label>
+        <input type="text" id="excludeBrand" value="Otterbox" placeholder="Brand to exclude">
+      </div>
+
+      <div class="filter-item">
+        <label>Minimum Rating:</label>
+        <input type="number" id="minRating" value="4.0" min="0" max="5" step="0.1">
+      </div>
+
+      <div class="filter-item">
+        <label>Minimum Purchases:</label>
+        <input type="number" id="minPurchases" value="50" min="0">
+      </div>
+
+      <div class="filter-item">
+        <label>
+          <input type="checkbox" id="amazonShipping" checked>
+          Amazon shipping only
+        </label>
+      </div>
+
+      <div class="filter-item">
+        <label>
+          <input type="checkbox" id="inStockOnly" checked>
+          In stock only
+        </label>
+      </div>
+
+      <div class="filter-item">
+        <label>Maximum Delivery Days:</label>
+        <input type="number" id="maxDeliveryDays" value="8" min="1">
+      </div>
+
+      <div class="filter-item">
+        <label>
+          <input type="checkbox" id="searchSponsoredOnly" checked>
+          Include sponsored items in search results only
+        </label>
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button id="applyFilter" class="btn btn-primary">Apply Filter & Get ASINs</button>
+      <button id="getAllAsins" class="btn btn-warning">Get All ASINs (No Filter)</button>
+      <button id="exportAsins" class="btn btn-success" disabled>Export ASINs</button>
+      <button id="clearFilter" class="btn btn-secondary">Clear Filter</button>
+      <button id="saveSettings" class="btn btn-info">Save Settings</button>
+    </div>
+
+    <div class="section multi-page-section">
+      <h3>🔄 Multi-Page Collection</h3>
+      <p class="description">Automatically navigate through multiple pages to collect more ASINs</p>
+      <div class="filter-item">
+        <label>Number of pages to collect:</label>
+        <input type="number" id="maxPages" value="5" min="1" max="20">
+      </div>
+      <div class="speed-tip">
+        <strong>💡 QUICK COLLECT:</strong> Applies rating, Prime, and stock filters automatically via URL, then collects ASINs at high speed!
+      </div>
+      <button id="quickCollect" class="btn btn-mega">⚡ Quick Collect (Recommended)</button>
+      <button id="collectMultiplePages" class="btn btn-detailed">🔍 Detailed Filtering (Slower)</button>
+    </div>
+
+    <div id="status" class="status"></div>
+    
+    <div id="results" class="results-section" style="display: none;">
+      <h3>Filtered ASINs (<span id="asinCount">0</span>)</h3>
+      <textarea id="asinOutput" readonly rows="8"></textarea>
+      <button id="copyAsins" class="btn btn-copy">Copy to Clipboard</button>
+    </div>
+
+    <!-- Account & Category Management Section -->
+    <div class="section save-section" id="saveSection" style="display: none;">
+      <h3>💾 Save ASINs by Category</h3>
+      
+      <div class="filter-item">
+        <label>Account:</label>
+        <div class="input-group">
+          <select id="accountSelect">
+            <option value="">Select Account</option>
+          </select>
+          <button id="addAccount" class="btn btn-small">+ Add</button>
+        </div>
+      </div>
+
+      <div class="filter-item">
+        <label>Category:</label>
+        <div class="input-group">
+          <select id="categorySelect">
+            <option value="">Select Category</option>
+          </select>
+          <button id="addCategory" class="btn btn-small">+ Add</button>
+        </div>
+      </div>
+
+      <button id="saveToCategory" class="btn btn-success" disabled>Save ASINs to Category</button>
+      <button id="viewSaved" class="btn btn-info">View Saved ASINs</button>
+    </div>
+
+    <!-- Saved ASINs Viewer -->
+    <div class="section saved-viewer" id="savedViewer" style="display: none;">
+      <h3>📚 Saved ASINs</h3>
+      <div class="filter-item">
+        <label>Filter by Account:</label>
+        <select id="viewAccountFilter">
+          <option value="">All Accounts</option>
+        </select>
+      </div>
+      <div id="savedAsinsList"></div>
+      <div class="button-group">
+        <button id="exportSavedAsins" class="btn btn-primary">Export Selected</button>
+        <button id="closeSavedViewer" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

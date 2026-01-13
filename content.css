@@ -1,0 +1,74 @@
+/* Styles for filter indicator */
+#asin-filter-indicator {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 15px 25px;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  z-index: 999999;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.asin-filter-indicator-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.indicator-icon {
+  font-size: 20px;
+}
+
+.indicator-text {
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.indicator-stats {
+  font-size: 12px;
+  opacity: 0.9;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+
+/* Styles for product badges */
+.asin-filter-badge {
+  display: inline-block;
+  background: #00a650;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 8px rgba(0, 166, 80, 0.3);
+}
+
+/* Highlight products that pass filter */
+[data-asin]:not([data-asin-filter="hidden"]) {
+  position: relative;
+}
+
+/* Add subtle border to matched products */
+[data-asin]:not([data-asin-filter="hidden"]) > div {
+  border: 2px solid #00a650 !important;
+  border-radius: 8px;
+}
