@@ -322,22 +322,7 @@ document.getElementById('quickCollect').addEventListener('click', async () => {
     excludeBrand: document.getElementById('excludeBrand').value.trim().toLowerCase()
   };
 
-  // Apply filters to URL if on first page
-  if (!tab.url.includes('&page=') && !tab.url.includes('?page=')) {
-    showStatus('Applying filters to Amazon search...', 'info');
-    const filteredUrl = buildAmazonFilterUrl(tab.url, filterConfig);
-    
-    if (filteredUrl !== tab.url) {
-      // Navigate to filtered URL
-      await chrome.tabs.update(tab.id, { url: filteredUrl });
-      
-      // Wait for page to load
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      // Refresh tab reference
-      [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    }
-  }
+  // Do NOT modify or navigate to a new URL. Only work with the current search results page.
 
   // Ensure content script is loaded
   showStatus('Initializing...', 'info');

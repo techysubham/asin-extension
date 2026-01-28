@@ -1,3 +1,63 @@
+// Add ASIN badge to each product card
+function addAsinBadges() {
+  const productCards = document.querySelectorAll('[data-component-type="s-search-result"]');
+  productCards.forEach(card => {
+    const asin = card.getAttribute('data-asin');
+    if (asin && asin.length === 10 && !card.querySelector('.asin-badge')) {
+      const badge = document.createElement('div');
+      badge.className = 'asin-badge';
+      badge.textContent = `ASIN: ${asin}`;
+      badge.style.position = 'absolute';
+      badge.style.top = '12px';
+      badge.style.left = '12px';
+      badge.style.background = 'linear-gradient(90deg, #232526 0%, #414345 100%)';
+      badge.style.color = '#fff';
+      badge.style.padding = '3px 10px';
+      badge.style.borderRadius = '8px';
+      badge.style.fontSize = '13px';
+      badge.style.zIndex = '9999';
+      badge.style.pointerEvents = 'none';
+      badge.style.fontWeight = 'bold';
+      badge.style.letterSpacing = '1px';
+      badge.style.boxShadow = '0 2px 8px rgba(0,0,0,0.18)';
+      badge.style.border = '2px solid #fff';
+      badge.style.maxWidth = '90%';
+      badge.style.overflow = 'hidden';
+      badge.style.textOverflow = 'ellipsis';
+      badge.style.whiteSpace = 'nowrap';
+      card.style.position = 'relative';
+      card.style.overflow = 'visible';
+      card.appendChild(badge);
+    }
+  });
+}
+
+// Wait for Amazon search results grid to be present and populated
+async function waitForSearchResults(timeout = 8000) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    const container = document.querySelector('[data-component-type="s-search-results"]');
+    if (container && container.querySelectorAll('[data-component-type="s-search-result"]').length > 0) {
+      return true;
+    }
+    await new Promise(resolve => setTimeout(resolve, 300));
+  }
+  console.warn('⚠️ Timed out waiting for search results grid.');
+  return false;
+}
+// Detect and log page refreshes or navigation changes
+window.addEventListener('beforeunload', function () {
+  console.log('⚠️ Page is about to refresh or navigate away.');
+});
+
+window.addEventListener('load', function () {
+  console.log('🔄 Page loaded/reloaded at', new Date().toLocaleString());
+  setTimeout(addAsinBadges, 1200); // Wait for products to load
+});
+
+// Also add badges after scroll/load events
+document.addEventListener('scroll', () => setTimeout(addAsinBadges, 1000));
+document.addEventListener('DOMContentLoaded', () => setTimeout(addAsinBadges, 1200));
 // Initialization
 console.log('🚀 Amazon ASIN Exporter - Content Script Loaded');
 console.log('✅ Extension is ready on this page');
@@ -126,15 +186,36 @@ async function scrollAndLoadProducts() {
 function getAllAsinsOnPage() {
   const allAsins = new Set();
   
-  document.querySelectorAll('[data-asin]').forEach(el => {
+  // STRICT: Only get from main search results container
+  const searchResultsContainer = document.querySelector('[data-component-type="s-search-results"]');
+  
+  if (!searchResultsContainer) {
+    console.warn('No search results container found');
+    return [];
+  }
+  
+  // ONLY get items that are actual search results
+  const items = searchResultsContainer.querySelectorAll('[data-component-type="s-search-result"]');
+  
+  if (items.length === 0) {
+    console.warn('No search result items found');
+    return [];
+  }
+  
+  items.forEach(el => {
     const asin = el.getAttribute('data-asin');
-    if (asin && asin.length >= 10 && asin !== '') {
-      allAsins.add(asin);
+    // Valid ASIN is exactly 10 characters
+    if (asin && asin.length === 10 && /^[A-Z0-9]{10}$/i.test(asin)) {
+      // Verify element is visible
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        allAsins.add(asin);
+      }
     }
   });
   
   const asinsArray = Array.from(allAsins);
-  console.log(`Found ${asinsArray.length} unique ASINs on page`);
+  console.log(`Found ${asinsArray.length} unique ASINs in visible search results`);
   return asinsArray;
 }
 
@@ -142,8 +223,11 @@ function getAllAsinsOnPage() {
 async function quickCollectAsins(maxPages, excludeBrand = '', searchKeywords = '', minRating = 0, maxDeliveryDays = 0) {
   console.log(`⚡ Starting QUICK collection (${maxPages} pages max)...`);
   
-  if (excludeBrand) {
-    console.log(`  Excluding brand: ${excludeBrand}`);
+  // Parse comma-separated exclude brands
+  const excludeBrands = excludeBrand ? excludeBrand.split(',').map(b => b.trim().toLowerCase()).filter(b => b) : [];
+  
+  if (excludeBrands.length > 0) {
+    console.log(`  Excluding brands: ${excludeBrands.join(', ')}`);
   }
   if (searchKeywords) {
     console.log(`  Keywords: ${searchKeywords}`);
@@ -166,6 +250,22 @@ async function quickCollectAsins(maxPages, excludeBrand = '', searchKeywords = '
   let checkedCount = 0;
   
   try {
+    // Wait for product grid to be loaded before starting extraction
+    await waitForSearchResults();
+
+    // Auto-scroll to load more products (simulate user scrolling)
+    let lastCount = 0;
+    for (let i = 0; i < 10; i++) { // up to 10 scrolls
+      window.scrollTo(0, document.body.scrollHeight);
+      await new Promise(resolve => setTimeout(resolve, 600));
+      const container = document.querySelector('[data-component-type="s-search-results"]');
+      const items = container ? container.querySelectorAll('[data-component-type="s-search-result"]') : [];
+      if (items.length > lastCount) {
+        lastCount = items.length;
+      } else {
+        break; // No new items loaded
+      }
+    }
     while (currentPage <= maxPages) {
       console.log(`📄 Page ${currentPage}/${maxPages}...`);
       
@@ -183,7 +283,7 @@ async function quickCollectAsins(maxPages, excludeBrand = '', searchKeywords = '
       }
       
       // Only collect from actual search results grid, not recommendations
-      // Look for the main search results container
+      // STRICT: Only get from main search results, exclude everything else
       const searchResultsContainer = document.querySelector('[data-component-type="s-search-results"]');
       
       if (!searchResultsContainer) {
@@ -191,9 +291,36 @@ async function quickCollectAsins(maxPages, excludeBrand = '', searchKeywords = '
         break;
       }
       
-      // Log what elements we're finding
-      const asinElements = searchResultsContainer.querySelectorAll('[data-asin]');
-      console.log(`  Found ${asinElements.length} elements with data-asin attribute in search results`);
+      // ONLY get items with data-component-type="s-search-result" 
+      // This is the ONLY reliable way to get actual search results
+      const searchResultItems = searchResultsContainer.querySelectorAll('[data-component-type="s-search-result"]');
+      
+      console.log(`  Found ${searchResultItems.length} search result items`);
+      
+      if (searchResultItems.length === 0) {
+        console.warn('  ⚠️ No search result items found - page may not have loaded properly');
+        break;
+      }
+      
+      // Extract ASINs ONLY from these verified search result items
+      const asinElements = [];
+      const foundAsins = new Set(); // Track to avoid duplicates
+      
+      searchResultItems.forEach(item => {
+        const asin = item.getAttribute('data-asin');
+        // Valid ASIN is exactly 10 characters AND must not be a duplicate
+        if (asin && asin.length === 10 && /^[A-Z0-9]{10}$/i.test(asin) && !foundAsins.has(asin)) {
+          // Verify this element is actually visible (not hidden carousel/recommendation)
+          const rect = item.getBoundingClientRect();
+          const isVisible = rect.width > 0 && rect.height > 0;
+          
+          if (isVisible) {
+            asinElements.push(item);
+            foundAsins.add(asin);
+          }
+        }
+      });
+      console.log(`  Found ${asinElements.length} valid ASIN elements in visible search results`);
       
       // Debug: show first few ASINs found
       let debugCount = 0;
@@ -208,7 +335,8 @@ async function quickCollectAsins(maxPages, excludeBrand = '', searchKeywords = '
       // Quick ASIN grab with filters
       asinElements.forEach(el => {
         const asin = el.getAttribute('data-asin');
-        if (!asin || asin.length < 10) return;
+        // Valid ASIN must be exactly 10 characters (alphanumeric, case-insensitive)
+        if (!asin || asin.length !== 10 || !/^[A-Z0-9]{10}$/i.test(asin)) return;
         
         checkedCount++;
         
@@ -247,8 +375,9 @@ async function quickCollectAsins(maxPages, excludeBrand = '', searchKeywords = '
           }
         }
         
-        // Filter out low stock items (various patterns)
-        const hasLowStock = productText.includes('left in stock') || productText.match(/only \d+ left/i);
+        // Filter out low stock items - ANY "left in stock" or "only X left" warnings
+        const hasLowStock = productText.match(/only \d+ left/i) || 
+                           productText.match(/\d+ left in stock/i);
         if (hasLowStock) {
           filteredCount++;
           if (checkedCount <= 10) {
@@ -257,57 +386,126 @@ async function quickCollectAsins(maxPages, excludeBrand = '', searchKeywords = '
           return;
         }
         
-        // Amazon fulfillment check (Prime/FBA only)
-        const hasPrime = productText.includes('prime') || 
-                        productText.includes('free delivery') || 
-                        productText.includes('free shipping') ||
-                        productCard.querySelector('[aria-label*="Prime"]') ||
-                        productCard.querySelector('.a-icon-prime');
+        // Filter out unavailable products
+                // Filter out used products
+                // Allow if 'used & new offers' or 'used and new offers' is present, but exclude if only 'used' is present without 'offer(s)'
+                if (productText.includes('used')) {
+                  const hasOffers = /used\s*(&|and)\s*new\s*offers?/.test(productText);
+                  if (!hasOffers) {
+                    filteredCount++;
+                    if (checkedCount <= 10) {
+                      console.log(`    ❌ FILTERED OUT - used product without offers (ASIN: ${asin})`);
+                    }
+                    return;
+                  }
+                }
+        const isUnavailable = productText.includes('currently unavailable') ||
+                             productText.includes('temporarily out of stock');
         
-        if (!hasPrime) {
+        if (isUnavailable) {
           filteredCount++;
           if (checkedCount <= 10) {
-            console.log(`    ❌ FILTERED OUT - not Amazon fulfilled/Prime (ASIN: ${asin})`);
+            console.log(`    ❌ FILTERED OUT - product unavailable (ASIN: ${asin})`);
           }
           return;
         }
         
+        // Amazon shipping check - TEMPORARY: Accept all and show debug
+        // We need to see what Prime indicators are actually present
+        const primeBadgeSelectors = [
+          '.a-icon-prime',
+          '[aria-label*="Prime"]',
+          'i.a-icon-prime',
+          'span.a-icon-prime',
+          'i[aria-label*="Prime"]',
+          '[class*="prime"]',
+          '.s-prime',
+          'i[class*="a-icon-prime"]',
+          'span[class*="prime"]'
+        ];
+        
+        let hasPrimeBadge = false;
+        let foundSelector = null;
+        
+        for (const selector of primeBadgeSelectors) {
+          const element = productCard.querySelector(selector);
+          if (element) {
+            hasPrimeBadge = true;
+            foundSelector = selector;
+            break;
+          }
+        }
+        
+        // TEMPORARY: Show debug for ALL products (not just first 10)
+        console.log(`    Product ${checkedCount} - ASIN ${asin}:`);
+        console.log(`      Prime badge: ${hasPrimeBadge}${foundSelector ? ` (${foundSelector})` : ''}`);
+        
+        // Check for Prime in text
+        const lowerText = productText.toLowerCase();
+        const hasPrimeInText = lowerText.includes('prime');
+        const hasFreeDelivery = lowerText.includes('free delivery') || lowerText.includes('free shipping');
+        
+        console.log(`      Prime in text: ${hasPrimeInText}`);
+        console.log(`      Free delivery: ${hasFreeDelivery}`);
+        
+        // TEMPORARY: Accept ALL products to see what we get
+        // The user will tell us which ASIN is correct
+        console.log(`    ✅ TEMPORARILY ACCEPTING (for debugging)`);
+        
+        // Note: Comment out the filter for now
+        /*
+        if (!hasPrimeBadge) {
+          filteredCount++;
+          console.log(`    ❌ FILTERED OUT - no Prime badge detected (ASIN: ${asin})`);
+          return;
+        }
+        */
+        
         // Delivery days check
         if (maxDeliveryDays > 0) {
           const deliveryElement = productCard.querySelector('[aria-label*="delivery"], [aria-label*="arrives"], .a-text-bold');
-          if (deliveryElement) {
-            const deliveryText = (deliveryElement.getAttribute('aria-label') || deliveryElement.textContent || '').toLowerCase();
-            if (deliveryText && !checkDeliveryDate(deliveryText, maxDeliveryDays)) {
-              filteredCount++;
-              if (checkedCount <= 10) {
-                console.log(`    ❌ FILTERED OUT - delivery exceeds ${maxDeliveryDays} days (ASIN: ${asin})`);
-              }
-              return;
+          if (!deliveryElement) {
+            filteredCount++;
+            if (checkedCount <= 10) {
+              console.log(`    ❌ FILTERED OUT - no delivery date info (ASIN: ${asin})`);
             }
+            return;
+          }
+          const deliveryText = (deliveryElement.getAttribute('aria-label') || deliveryElement.textContent || '').toLowerCase();
+          if (deliveryText && !checkDeliveryDate(deliveryText, maxDeliveryDays)) {
+            filteredCount++;
+            if (checkedCount <= 10) {
+              console.log(`    ❌ FILTERED OUT - delivery exceeds ${maxDeliveryDays} days (ASIN: ${asin})`);
+            }
+            return;
           }
         }
         
         // Keyword filter (if keywords are provided, ONLY include products that match)
         if (keywords.length > 0 && titleText) {
-          const hasKeyword = keywords.some(keyword => titleText.includes(keyword));
-          if (!hasKeyword) {
+          // Match only if ALL keywords are present in the title
+          const allKeywordsPresent = keywords.every(keyword => titleText.includes(keyword));
+          if (!allKeywordsPresent) {
             filteredCount++;
             if (checkedCount <= 5) {
-              console.log(`    ❌ FILTERED OUT - no keyword match`);
+              console.log(`    ❌ FILTERED OUT - not all keywords matched`);
             }
             return;
           } else if (checkedCount <= 5) {
-            console.log(`    ✓ INCLUDED - keyword matched`);
+            console.log(`    ✓ INCLUDED - all keywords matched`);
           }
         }
         
-        // Brand filter
-        if (excludeBrand && titleText.includes(excludeBrand)) {
-          filteredCount++;
-          if (checkedCount <= 5) {
-            console.log(`    ❌ FILTERED OUT - brand excluded`);
+        // Brand filter - check against all excluded brands
+        if (excludeBrands.length > 0) {
+          const matchedBrand = excludeBrands.find(brand => titleText.includes(brand));
+          if (matchedBrand) {
+            filteredCount++;
+            if (checkedCount <= 5) {
+              console.log(`    ❌ FILTERED OUT - brand excluded: ${matchedBrand}`);
+            }
+            return;
           }
-          return;
         }
         
         // Rating filter
@@ -323,6 +521,12 @@ async function quickCollectAsins(maxPages, excludeBrand = '', searchKeywords = '
               }
               return;
             }
+          } else {
+            filteredCount++;
+            if (checkedCount <= 5) {
+              console.log('    ❌ FILTERED OUT - no rating element found');
+            }
+            return;
           }
         }
         
@@ -330,7 +534,7 @@ async function quickCollectAsins(maxPages, excludeBrand = '', searchKeywords = '
       });
       
       console.log(`  ✓ Page ${currentPage}: ${allAsins.size} total ASINs (checked ${checkedCount} products)`);
-      if (keywords.length > 0 || excludeBrand) {
+      if (keywords.length > 0 || excludeBrands.length > 0) {
         console.log(`    (${filteredCount} items filtered out)`);
       }
       
@@ -365,7 +569,7 @@ async function quickCollectAsins(maxPages, excludeBrand = '', searchKeywords = '
     console.log(`\n✅ Quick collection done!`);
     console.log(`⚡ ${finalAsins.length} ASINs collected in ${timeSeconds}s`);
     if (filteredCount > 0) {
-      console.log(`🚫 ${filteredCount} items excluded (${excludeBrand})`);
+      console.log(`🚫 ${filteredCount} items excluded (${excludeBrands.join(', ')})`);
     }
     console.log(`📊 ~${(finalAsins.length / parseFloat(timeSeconds)).toFixed(1)} ASINs/second`);
     
@@ -520,38 +724,38 @@ function clearProductFilter() {
 function filterProducts() {
   if (!currentConfig) return [];
 
-  // Multiple strategies to find products
   let products = new Set();
   
-  // Strategy 1: Find by data-asin attribute
-  document.querySelectorAll('[data-asin]').forEach(el => {
-    const asin = el.getAttribute('data-asin');
-    if (asin && asin.length >= 10 && asin !== '') {
-      products.add(el);
-    }
-  });
+  // STRICT: Only get from main search results container
+  const searchResultsContainer = document.querySelector('[data-component-type="s-search-results"]');
   
-  // Strategy 2: Find by common Amazon product containers
-  document.querySelectorAll('[data-component-type="s-search-result"]').forEach(el => {
-    const asin = el.getAttribute('data-asin');
-    if (asin && asin.length >= 10) {
-      products.add(el);
-    }
-  });
+  if (!searchResultsContainer) {
+    console.warn('No search results container found - may not be on a search results page');
+    return [];
+  }
   
-  // Strategy 3: Find div with cel-widget containing search_result
-  document.querySelectorAll('div[data-cel-widget]').forEach(el => {
-    const widget = el.getAttribute('data-cel-widget');
-    if (widget && widget.includes('search_result')) {
-      const asin = el.getAttribute('data-asin');
-      if (asin && asin.length >= 10) {
+  // ONLY get items that are actual search results
+  const items = searchResultsContainer.querySelectorAll('[data-component-type="s-search-result"]');
+  
+  if (items.length === 0) {
+    console.warn('No search result items found');
+    return [];
+  }
+  
+  items.forEach(el => {
+    const asin = el.getAttribute('data-asin');
+    // Valid ASIN is exactly 10 characters
+    if (asin && asin.length === 10 && /^[A-Z0-9]{10}$/i.test(asin)) {
+      // Verify element is visible
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
         products.add(el);
       }
     }
   });
 
   products = Array.from(products);
-  console.log(`Found ${products.length} products to check`);
+  console.log(`Found ${products.length} products in visible search results to check`);
   
   // Debug: Log first few ASINs found
   if (products.length > 0) {
@@ -617,9 +821,9 @@ function checkProduct(product, asin) {
       }
       
       if (titleText) {
-        const hasKeyword = keywords.some(keyword => titleText.includes(keyword));
-        if (!hasKeyword) {
-          console.log(`Filtered out ${asin}: no keywords found in "${titleText.substring(0, 50)}..."`);
+          const allKeywordsPresent = keywords.every(keyword => titleText.includes(keyword));
+          if (!allKeywordsPresent) {
+            console.log(`Filtered out ${asin}: not all keywords matched in "${titleText.substring(0, 50)}..."`);
           return false;
         }
       } else {
@@ -629,13 +833,16 @@ function checkProduct(product, asin) {
     }
   }
   
-  // Check 1: Brand filter (exclude specific brand)
+  // Check 1: Brand filter (exclude specific brands)
   if (config.excludeBrand) {
     const brandElement = product.querySelector('.a-size-base-plus, h2 .a-text-normal, .s-line-clamp-2');
     if (brandElement) {
       const productTitle = brandElement.textContent.toLowerCase();
-      if (productTitle.includes(config.excludeBrand.toLowerCase())) {
-        console.log(`Filtered out ${asin}: excluded brand ${config.excludeBrand}`);
+      // Parse comma-separated exclude brands
+      const excludeBrands = config.excludeBrand.split(',').map(b => b.trim().toLowerCase()).filter(b => b);
+      const matchedBrand = excludeBrands.find(brand => productTitle.includes(brand));
+      if (matchedBrand) {
+        console.log(`Filtered out ${asin}: excluded brand ${matchedBrand}`);
         return false;
       }
     }
@@ -647,20 +854,18 @@ function checkProduct(product, asin) {
     if (ratingElement) {
       const ratingText = ratingElement.textContent;
       const rating = parseFloat(ratingText.match(/[\d.]+/)?.[0] || '0');
-      
       console.log(`🔍 Rating check for ${asin}: found rating ${rating}, minimum required ${config.minRating} (type: ${typeof config.minRating})`);
-      
       // Filter out products below minimum rating
       if (rating > 0 && rating < config.minRating) {
         console.log(`❌ Filtered out ${asin}: rating ${rating} is below minimum ${config.minRating}`);
         return false;
       }
-      
       if (rating >= config.minRating) {
         console.log(`✓ Product ${asin}: rating ${rating} meets minimum ${config.minRating}`);
       }
     } else {
-      console.log(`⚠ Product ${asin}: no rating element found, allowing through`);
+      console.log(`❌ Filtered out ${asin}: no rating element found`);
+      return false;
     }
   }
 
@@ -686,22 +891,15 @@ function checkProduct(product, asin) {
     // If no purchase data found, allow it through
   }
 
-  // Check 4: Amazon shipping only
+  // Check 4: Amazon shipping only - must be Prime or shipped/sold by Amazon
   if (config.amazonShipping) {
-    const deliveryElement = product.querySelector('.a-color-base.a-text-bold, .s-shipping-badge');
-    let hasAmazonShipping = false;
-    
-    // Check for FREE delivery badge or Amazon shipping indicators
+    // Require Prime badge OR explicit 'Ships from Amazon' (not just seller name)
+    const hasPrime = product.querySelector('.a-icon-prime, [aria-label*="Prime"]');
     const shippingText = product.textContent.toLowerCase();
-    if (shippingText.includes('free delivery') || 
-        shippingText.includes('free shipping') ||
-        shippingText.includes('amazon prime') ||
-        product.querySelector('[aria-label*="Prime"]')) {
-      hasAmazonShipping = true;
-    }
-    
-    if (!hasAmazonShipping) {
-      console.log(`Filtered out ${asin}: not Amazon shipping`);
+    // Look for explicit fulfillment text, not just seller name
+    const hasAmazonFulfillment = /ships\s+from\s+amazon/.test(shippingText) || /fulfilled\s+by\s+amazon/.test(shippingText);
+    if (!hasPrime && !hasAmazonFulfillment) {
+      console.log(`Filtered out ${asin}: not Amazon shipping/Prime`);
       return false;
     }
   }
@@ -720,12 +918,14 @@ function checkProduct(product, asin) {
   // Check 6: Delivery date within X days
   if (config.maxDeliveryDays) {
     const deliveryElement = product.querySelector('[aria-label*="delivery"], [aria-label*="arrives"]');
-    if (deliveryElement) {
-      const deliveryText = deliveryElement.getAttribute('aria-label') || deliveryElement.textContent;
-      if (!checkDeliveryDate(deliveryText, config.maxDeliveryDays)) {
-        console.log(`Filtered out ${asin}: delivery exceeds ${config.maxDeliveryDays} days`);
-        return false;
-      }
+    if (!deliveryElement) {
+      console.log(`Filtered out ${asin}: no delivery date info`);
+      return false;
+    }
+    const deliveryText = deliveryElement.getAttribute('aria-label') || deliveryElement.textContent;
+    if (!checkDeliveryDate(deliveryText, config.maxDeliveryDays)) {
+      console.log(`Filtered out ${asin}: delivery exceeds ${config.maxDeliveryDays} days`);
+      return false;
     }
   }
 
@@ -751,47 +951,77 @@ function checkDeliveryDate(deliveryText, maxDays) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
-  // Common patterns: "Get it by Friday, Jan 17", "Arrives Jan 17", etc.
-  const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const lowerText = deliveryText.toLowerCase();
   
-  // Look for patterns like "Jan 17", "January 17"
-  const dateMatch = deliveryText.match(/(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+(\d{1,2})/i);
-  if (dateMatch) {
-    const month = monthNames.findIndex(m => deliveryText.toLowerCase().includes(m));
-    const day = parseInt(dateMatch[1]);
-    
-    if (month >= 0) {
-      const deliveryDate = new Date(today.getFullYear(), month, day);
-      
-      // If the date is in the past, it's probably next year
-      if (deliveryDate < today) {
-        deliveryDate.setFullYear(deliveryDate.getFullYear() + 1);
-      }
-      
-      const daysDiff = Math.floor((deliveryDate - today) / (1000 * 60 * 60 * 24));
-      return daysDiff <= maxDays;
-    }
+  // If "today" is mentioned
+  if (lowerText.includes('today')) {
+    return 0 <= maxDays;
+  }
+  
+  // If "tomorrow" is mentioned
+  if (lowerText.includes('tomorrow')) {
+    return 1 <= maxDays;
   }
   
   // Look for "X days" pattern
-  const daysMatch = deliveryText.match(/(\d+)\s*days?/i);
+  const daysMatch = lowerText.match(/(\d+)\s*days?/);
   if (daysMatch) {
     const days = parseInt(daysMatch[1]);
     return days <= maxDays;
   }
   
-  // If "tomorrow" is mentioned
-  if (deliveryText.toLowerCase().includes('tomorrow')) {
-    return 1 <= maxDays;
+  // Common patterns: "Get it by Friday, Jan 17", "Arrives Jan 17", "Feb 4 - 7", etc.
+  const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+  // Look for cross-month date range patterns like "Jan 31 - Feb 3" or same month "Feb 4 - 7"
+  // Pattern: "Jan 31 - Feb 3" or "February 4 - 7"
+  const crossMonthRange = lowerText.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+(\d{1,2})\s*-\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)?\w*?\s*(\d{1,2})/);
+  if (crossMonthRange) {
+    // crossMonthRange[1] = start month, crossMonthRange[2] = start day
+    // crossMonthRange[3] = end month (optional), crossMonthRange[4] = end day
+    let endMonthStr = crossMonthRange[3] || crossMonthRange[1];
+    let endDay = parseInt(crossMonthRange[4]);
+    let endMonthIndex = monthNames.findIndex(m => endMonthStr && endMonthStr.startsWith(m));
+    if (endMonthIndex >= 0 && endDay >= 1 && endDay <= 31) {
+      let year = today.getFullYear();
+      const currentMonth = today.getMonth();
+      if (endMonthIndex < currentMonth) {
+        year++;
+      } else if (endMonthIndex === currentMonth && endDay < today.getDate()) {
+        year++;
+      }
+      const deliveryDate = new Date(year, endMonthIndex, endDay);
+      const daysDiff = Math.floor((deliveryDate - today) / (1000 * 60 * 60 * 24));
+      console.log(`      Delivery date (range): ${deliveryDate.toDateString()}, days from now: ${daysDiff}`);
+      return daysDiff >= 0 && daysDiff <= maxDays;
+    }
+  }
+
+  // Look for single date patterns like "Jan 17", "January 17"
+  const dateMatch = lowerText.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+(\d{1,2})/);
+  if (dateMatch) {
+    const monthStr = dateMatch[1];
+    const day = parseInt(dateMatch[2]);
+    const monthIndex = monthNames.findIndex(m => monthStr.startsWith(m));
+    if (monthIndex >= 0 && day >= 1 && day <= 31) {
+      let year = today.getFullYear();
+      const currentMonth = today.getMonth();
+      if (monthIndex < currentMonth) {
+        year++;
+      } else if (monthIndex === currentMonth && day < today.getDate()) {
+        year++;
+      }
+      const deliveryDate = new Date(year, monthIndex, day);
+      const daysDiff = Math.floor((deliveryDate - today) / (1000 * 60 * 60 * 24));
+      console.log(`      Delivery date: ${deliveryDate.toDateString()}, days from now: ${daysDiff}`);
+      return daysDiff >= 0 && daysDiff <= maxDays;
+    }
   }
   
-  // If "today" is mentioned
-  if (deliveryText.toLowerCase().includes('today')) {
-    return 0 <= maxDays;
-  }
-  
-  // Default: assume it's within range if we can't parse it
-  return true;
+  // If we can't parse it and maxDeliveryDays is set, filter it out to be safe
+  // This ensures we don't include products with unclear delivery dates
+  console.log(`      Could not parse delivery date from: "${deliveryText}" - filtering out`);
+  return false;
 }
 
 function addPassBadge(product, asin) {

@@ -31,8 +31,9 @@
       </div>
 
       <div class="filter-item">
-        <label>Exclude Brand:</label>
-        <input type="text" id="excludeBrand" value="Otterbox" placeholder="Brand to exclude">
+        <label>Exclude Brands:</label>
+        <input type="text" id="excludeBrand" value="Otterbox" placeholder="e.g., Otterbox, Samsung, Apple">
+        <small class="hint">Comma-separated brands to exclude from results.</small>
       </div>
 
       <div class="filter-item">
@@ -85,7 +86,7 @@
       <p class="description">Automatically navigate through multiple pages to collect more ASINs</p>
       <div class="filter-item">
         <label>Number of pages to collect:</label>
-        <input type="number" id="maxPages" value="5" min="1" max="20">
+        <input type="number" id="maxPages" value="1" min="1" max="20">
       </div>
       <div class="speed-tip">
         <strong>💡 QUICK COLLECT:</strong> Applies rating, Prime, and stock filters automatically via URL, then collects ASINs at high speed!
